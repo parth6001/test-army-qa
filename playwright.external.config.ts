@@ -1,8 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: process.env.TEST_ARMY_TEST_DIR || './tests',
+  outputDir: process.env.TEST_ARMY_OUTPUT_DIR || './test-results',
   testMatch: 'generated_*.spec.ts',
+  metadata: { testArmyRunId: process.env.TEST_ARMY_RUN_ID || null },
   fullyParallel: false,
   retries: 0,
   timeout: 30000,

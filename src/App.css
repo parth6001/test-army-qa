@@ -28,7 +28,7 @@ body {
 }
 
 .header p {
-  color: #475569;
+  color: #94a3b8;
   margin-top: 4px;
   font-size: 0.88rem;
 }
@@ -36,7 +36,7 @@ body {
 /* Split workspace */
 .workspace {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
   gap: 20px;
   flex: 1;
   min-height: 600px;
@@ -66,7 +66,7 @@ body {
 .field label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #64748b;
+  color: #a2b1c5;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -92,7 +92,7 @@ body {
 
 .field input::placeholder,
 .field textarea::placeholder {
-  color: #1e293b;
+  color: #8292a8;
 }
 
 .field input:disabled,
@@ -102,7 +102,7 @@ body {
 
 .run-btn {
   background: #f97316;
-  color: #fff;
+  color: #171009;
   border: none;
   border-radius: 8px;
   padding: 11px 20px;
@@ -156,13 +156,13 @@ body {
 .chip:disabled { opacity: 0.35; cursor: not-allowed; }
 .chip.static {
   cursor: default;
-  color: #64748b;
+  color: #a2b1c5;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chip.static:hover { border-color: #1e293b; color: #64748b; }
+.chip.static:hover { border-color: #8292a8; color: #a2b1c5; }
 
 /* Scraped preview */
 .preview {
@@ -203,14 +203,14 @@ body {
 .preview-label {
   font-size: 0.65rem;
   font-weight: 600;
-  color: #475569;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .sample-rows { display: flex; flex-direction: column; gap: 3px; }
 .sample-row {
   font-size: 0.7rem;
-  color: #64748b;
+  color: #a2b1c5;
   font-family: 'Consolas', 'Courier New', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -255,9 +255,9 @@ body {
   font-family: inherit;
 }
 .login-fields input:focus { border-color: #f97316; }
-.login-fields input::placeholder { color: #334155; }
+.login-fields input::placeholder { color: #8292a8; }
 .login-fields input:disabled { opacity: 0.4; }
-.login-note { font-size: 0.7rem; color: #475569; line-height: 1.4; }
+.login-note { font-size: 0.7rem; color: #94a3b8; line-height: 1.4; }
 
 /* Review toggle */
 .toggle {
@@ -294,7 +294,7 @@ body {
   background: #0d1117;
   flex-shrink: 0;
 }
-.code-hint { font-size: 0.72rem; color: #475569; }
+.code-hint { font-size: 0.72rem; color: #94a3b8; }
 .code-actions { display: flex; gap: 6px; }
 .code-btn {
   background: transparent;
@@ -337,6 +337,8 @@ body {
 
 .status-badge.pass { background: #052e16; color: #4ade80; }
 .status-badge.fail { background: #1c0a0a; color: #f87171; }
+.status-badge.neutral, .badge.neutral { background: #33250a; color: #facc15; }
+.test-row.neutral .test-icon { color: #facc15; }
 
 /* Right panel */
 .right-panel { }
@@ -351,7 +353,7 @@ body {
 .tabs button {
   background: none;
   border: none;
-  color: #475569;
+  color: #94a3b8;
   padding: 11px 18px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -411,7 +413,7 @@ body {
 }
 
 .empty-state {
-  color: #1e293b;
+  color: #8292a8;
   font-style: italic;
   margin: auto;
   text-align: center;
@@ -460,7 +462,8 @@ body {
   border-bottom: 1px solid #1e293b;
   flex-shrink: 0;
 }
-.results-summary { display: flex; gap: 10px; font-size: 0.78rem; font-weight: 600; }
+.results-summary { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.78rem; font-weight: 600; }
+.run-details { padding: 12px 16px; font-size: 0.78rem; overflow-wrap: anywhere; }
 .results-summary .ok { color: #4ade80; }
 .results-summary .bad { color: #f87171; }
 
@@ -501,9 +504,9 @@ body {
 .test-row.pass .test-icon { color: #4ade80; }
 .test-row.fail .test-icon { color: #f87171; }
 
-.test-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.test-dur { color: #475569; font-size: 0.72rem; flex-shrink: 0; }
-.test-caret { color: #64748b; flex-shrink: 0; }
+.test-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.test-dur { color: #94a3b8; font-size: 0.72rem; flex-shrink: 0; }
+.test-caret { color: #a2b1c5; flex-shrink: 0; }
 
 .test-detail {
   padding: 0 16px 14px 38px;
@@ -538,4 +541,44 @@ body {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
   }
+}
+
+/* Guided setup and bounded output keep the workspace stable during a run. */
+body { background: #0b1018; }
+.header { padding: 8px 0 20px; border-bottom: 1px solid #253044; }
+.header h1 { letter-spacing: -.04em; color: #fb923c; }
+.header p { max-width: 640px; }
+.panel { min-width: 0; box-shadow: 0 10px 30px #0002; }
+.section-heading h2 { font-size: 1.2rem; margin: 5px 0; }
+.section-heading p, .progress-detail { color: #a2b1c5; font-size: .83rem; }
+.eyebrow { font-size: .68rem; letter-spacing: .12em; font-weight: 700; color: #fdba74; }
+.field label { color: #d4dce7; }
+.field input, .field textarea, .login-fields input { border-color: #334155; }
+.chip, .inspect-btn, .code-btn, .raw-toggle { min-height: 36px; }
+.tabs button { min-height: 48px; }
+.right-panel { min-height: 550px; max-height: 850px; }
+.panel-body { min-height: 0; }
+.log, .results-view { min-height: 0; overscroll-behavior: contain; }
+.log-line { color: #b5c5d9; overflow-wrap: anywhere; }
+.empty-state { max-width: 420px; padding: 32px 12px; font-style: normal; font-family: inherit; color: #a2b1c5; }
+.empty-state h2 { color: #e2e8f0; margin: 12px 0; font-size: 1.5rem; }
+.empty-steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 24px; font-size: .75rem; }
+.empty-steps span { padding: 7px 10px; background: #1e293b; border-radius: 6px; }
+.task-progress { padding: 14px; background: #172234; border: 1px solid #334155; border-radius: 8px; font-size: .83rem; }
+.progress-detail { margin: 8px 0; overflow-wrap: anywhere; }
+.cancel-btn { background: transparent; color: #fda4af; border: 1px solid #9f4352; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+.cancel-btn:disabled { opacity: .6; cursor: wait; }
+.results-toolbar, .code-toolbar { flex-wrap: wrap; gap: 12px; }
+.results-summary span { padding: 4px 8px; border-radius: 4px; background: #1e293b; }
+@media (max-width: 600px) {
+  .app { padding: 18px 12px; gap: 16px; }
+  .left-panel { padding: 18px; }
+  .tabs button { padding: 12px 10px; font-size: .78rem; flex: 1; justify-content: center; }
+  .test-row-head { flex-wrap: wrap; padding: 12px; }
+  .test-title { flex-basis: 65%; }
+  .right-panel { min-height: 450px; max-height: 700px; }
+  .code-editor { min-height: 350px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -21,6 +21,7 @@ test-report.json
 test-results
 playwright-report
 playwright/.auth/
+.test-army/
 
 # Local editor configuration and generated tests that target private environments
 .claude/settings.local.json

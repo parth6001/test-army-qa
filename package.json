@@ -12,9 +12,10 @@
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "test:contracts": "node tests/contracts/qa-contracts.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:all": "vitest run && playwright test",
+    "test:all": "npm run test:contracts && vitest run && playwright test",
     "generate": "node generate-tests.mjs"
   },
   "dependencies": {

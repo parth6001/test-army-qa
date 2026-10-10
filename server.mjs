@@ -1,21 +1,24 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
+import { installApiBoundary } from './server/api-boundary.mjs';
+import { installSessions, installCancellation, registerSessionJob } from './server/sessions.mjs';
+import { installArtifacts } from './server/artifacts.mjs';
 import { chromium } from 'playwright';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { createJobManager, withBrowser } from './server/jobs.mjs';
+import { executeRunner } from './server/runner.mjs';
+import { summarizeRun } from './server/run-report.mjs';
 import fs from 'fs';
 import path from 'path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-const execAsync = promisify(exec);
+const jobs = createJobManager();
 // LLM backend: 'claude' (Claude Code subscription, no API key) or 'openrouter'
 const LLM_BACKEND = (process.env.LLM_BACKEND || 'openrouter').toLowerCase();
 const app = express();
-app.use(cors());
-app.use(express.json());
-// Serve Playwright artifacts (failure screenshots) to the UI
-app.use('/screenshots', express.static('test-results'));
+installApiBoundary(app);
+installSessions(app);
+installArtifacts(app);
+installCancellation(app, jobs);
 
 let FREE_MODELS = [];
 
@@ -40,15 +43,14 @@ async function fetchFreeModels() {
   }
 }
 
-const AUTH_FILE = path.resolve('auth-state.json');
 
-// Log in once, persist cookies/localStorage to AUTH_FILE for reuse by crawl + tests
-async function loginAndSave(login, send = () => {}) {
+
+// Capture cookies/localStorage only in the current job for crawl + tests.
+async function loginAndSave(login, send, job) {
   send('progress', `🔐 Logging in at ${login.url}...`);
-  const browser = await chromium.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  try {
+  return withBrowser(job, () => chromium.launch(), async browser => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
     await page.goto(login.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(1000);
 
@@ -69,18 +71,16 @@ async function loginAndSave(login, send = () => {}) {
     ]);
     await page.waitForTimeout(2000);
 
-    await context.storageState({ path: AUTH_FILE });
-    send('progress', '✅ Login OK — session saved.');
-  } finally {
-    await browser.close();
-  }
+    await context.storageState({ path: job.auth });
+    send('progress', 'Session captured for this task.');
+  });
 }
 
-async function crawlPage(url, send = () => {}, useAuth = false) {
+async function crawlPage(url, send, useAuth, job) {
   send('progress', '🌐 Launching headless browser...');
-  const browser = await chromium.launch();
+  return withBrowser(job, () => chromium.launch(), async browser => {
   const context = await browser.newContext(
-    useAuth && fs.existsSync(AUTH_FILE) ? { storageState: AUTH_FILE } : {}
+    useAuth && fs.existsSync(job.auth) ? { storageState: job.auth } : {}
   );
   const page = await context.newPage();
 
@@ -123,8 +123,8 @@ async function crawlPage(url, send = () => {}, useAuth = false) {
     send('progress', `📑 Sample rows: ${data.sampleRows.slice(0, 3).join(' | ')}`);
   }
 
-  await browser.close();
   return data;
+  });
 }
 
 // Click combobox-style inputs, scrape the dropdown options they reveal
@@ -182,7 +182,7 @@ async function scrapeSampleRows(page) {
   }).catch(() => []);
 }
 
-async function generateTests(pageData, targetUrl, userDescription, send, useAuth = false) {
+async function generateTests(pageData, targetUrl, userDescription, send, useAuth, job) {
   const authNote = useAuth
     ? `\nAUTH: User is ALREADY LOGGED IN (session restored via storageState). Do NOT write any login steps. Each test goes straight to "${targetUrl}" already authenticated.\n`
     : '';
@@ -235,7 +235,7 @@ First line must be exactly: import { test, expect } from '@playwright/test';
 Aim for 15-25 tests — one test per case in the user's description. Do not under-generate.`;
 
   if (LLM_BACKEND === 'claude') {
-    return await generateViaClaude(prompt, send);
+    return await generateViaClaude(prompt, send, job);
   }
 
   const FALLBACK_MODELS = process.env.OPENROUTER_MODEL
@@ -244,20 +244,22 @@ Aim for 15-25 tests — one test per case in the user's description. Do not unde
 
   let lastError;
   for (const model of FALLBACK_MODELS) {
+    job.check();
     send('progress', `🤖 Trying model: ${model}...`);
     try {
-      const result = await callOpenRouter(model, prompt, send);
+      const result = await callOpenRouter(model, prompt, send, job);
       return result;
     } catch (err) {
+      job.check();
       send('progress', `⚠️ ${model} failed: ${err.message} — trying next...`);
       lastError = err;
     }
   }
-  throw lastError;
+  throw lastError || new Error('No models available. Configure a provider model and retry.');
 }
 
 // Generate via Claude Code subscription (Agent SDK) — no ANTHROPIC_API_KEY needed
-async function generateViaClaude(prompt, send) {
+async function generateViaClaude(prompt, send, job) {
   send('progress', '🤖 Claude (subscription) generating tests...');
   let raw = '';
   let assistantText = '';   // fallback: accumulate text blocks across turns
@@ -266,6 +268,7 @@ async function generateViaClaude(prompt, send) {
     options: {
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
       maxTurns: 8,
+      abortController: job.controller,
       allowedTools: [],          // text-only, no tool use / file access
       permissionMode: 'bypassPermissions',
       settingSources: [],        // ignore project CLAUDE.md, hooks, MCP
@@ -302,9 +305,10 @@ function cleanCode(raw) {
   return code;
 }
 
-async function callOpenRouter(model, prompt, send) {
+async function callOpenRouter(model, prompt, send, job) {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
+    signal: job.signal,
     headers: {
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
@@ -345,160 +349,108 @@ async function callOpenRouter(model, prompt, send) {
   return cleanCode(raw);
 }
 
-function sanitizeFilename(url) {
-  return url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40);
-}
-
-// Walk Playwright JSON report → flat list of test rows for the UI
-function parseReport(reportPath) {
-  const rows = [];
-  let raw;
-  try {
-    raw = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-  } catch {
-    return rows;
-  }
-
-  const resultsRoot = path.resolve('test-results');
-  const walk = (suite) => {
-    for (const spec of suite.specs || []) {
-      for (const t of spec.tests || []) {
-        const r = (t.results || [])[t.results.length - 1] || {};
-        const shot = (r.attachments || []).find(a => a.name === 'screenshot' && a.path);
-        let screenshot = null;
-        if (shot) {
-          const rel = path.relative(resultsRoot, shot.path).replace(/\\/g, '/');
-          if (!rel.startsWith('..')) screenshot = `/screenshots/${rel}`;
-        }
-        rows.push({
-          title: spec.title,
-          status: r.status || (spec.ok ? 'passed' : 'failed'),
-          durationMs: r.duration || 0,
-          error: r.error ? (r.error.message || '').replace(/\[[0-9;]*m/g, '').trim() : '',
-          screenshot,
-        });
-      }
-    }
-    for (const child of suite.suites || []) walk(child);
-  };
-  for (const s of raw.suites || []) walk(s);
-  return rows;
-}
-
 app.get('/api/models', (_req, res) => res.json({ models: FREE_MODELS }));
+function begin(req, res) {
+  if (req.session.jobs.size >= 512) {
+    res.status(429).json({ error: 'Session task limit reached. Reload the UI to start a new session.' });
+    return null;
+  }
+  let job;
+  try { job = jobs.start(); }
+  catch (error) { res.status(409).json({ error: error.message }); return null; }
+  registerSessionJob(req.session, job);
+  res.on('close', () => { if (!res.writableEnded) job.cancel('Connection closed. Task canceled.'); });
+  return job;
+}
+function finish(job) {
+  // Keep the admission gate closed when cleanup cannot be confirmed.
+  job.finish();
+}
 
-// Crawl only — return scraped structure so UI can preview before generating
 app.post('/api/inspect', async (req, res) => {
   const { url, login = null } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
+  const job = begin(req, res);
+  if (!job) return;
   const useAuth = !!(login && login.url && login.username);
   try {
-    if (useAuth) await loginAndSave(login);
-    const pageData = await crawlPage(url, () => {}, useAuth);
-    res.json(pageData);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (useAuth) await loginAndSave(login, () => {}, job);
+    const data = await crawlPage(url, () => {}, useAuth, job);
+    job.check();
+    finish(job);
+    res.json(data);
+  } catch (error) {
+    finish(job);
+    res.status(500).json({ error: job.signal.reason?.message || error.message });
   }
 });
 
-// Write test code to disk, run via Playwright, stream report
-async function runTests(url, testCode, send, useAuth = false) {
-  const filename = `generated_${sanitizeFilename(url)}.spec.ts`;
-  const outPath = path.join('tests', filename);
-  if (!fs.existsSync('tests')) fs.mkdirSync('tests');
-  fs.writeFileSync(outPath, testCode);
-  send('progress', `💾 Test file saved: ${outPath}`);
-
-  send('progress', '🚀 Running tests with Playwright...');
-  const normalizedPath = outPath.replace(/\\/g, '/');
-  const reportPath = path.resolve('test-report.json');
-  const runEnv = { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath };
-  if (useAuth && fs.existsSync(AUTH_FILE)) runEnv.PW_STORAGE = AUTH_FILE;
-  const finish = (stdout, stderr, failed) => {
-    send('progress', failed ? '🏁 Test run complete (some failures).' : '🏁 Test run complete.');
-    send('results', (stdout || '') + (stderr || ''));
-    send('report', parseReport(reportPath));
-    send('done', 'completed');
-  };
-  try {
-    const { stdout, stderr } = await execAsync(
-      `npx playwright test "${normalizedPath}" --reporter=list,json --config=playwright.external.config.ts`,
-      { timeout: 120000, env: runEnv }
-    );
-    finish(stdout, stderr, false);
-  } catch (runErr) {
-    finish(runErr.stdout, runErr.stderr, true);
-  }
+async function runTests(testCode, send, useAuth, job) {
+  job.check();
+  fs.writeFileSync(path.join(job.dir, 'generated_run.spec.ts'), testCode);
+  const reportPath = path.join(job.dir, 'report.json');
+  const env = { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,
+    TEST_ARMY_RUN_ID: job.id, TEST_ARMY_TEST_DIR: job.dir, TEST_ARMY_OUTPUT_DIR: job.artifacts };
+  delete env.PW_STORAGE;
+  if (useAuth) env.PW_STORAGE = job.auth;
+  send('progress', 'Running tests with Playwright…');
+  const execution = await executeRunner(job, env);
+  let report;
+  let reportError;
+  try { report = JSON.parse(fs.readFileSync(reportPath, 'utf8')); }
+  catch { reportError = 'Current run report is missing or unreadable.'; }
+  const reason = job.signal.reason?.message;
+  const result = summarizeRun({ runId: job.id, report, reportError,
+    resultsRoot: job.artifacts, screenshotPrefix: `/screenshots/${job.id}`,
+    exitCode: execution.exitCode, signal: job.signal.aborted ? 'SIGTERM' : execution.signal,
+    timedOut: Boolean(reason?.includes('timed out')), executionError: reason });
+  send('results', execution.output);
+  return { kind: 'run', result };
 }
 
-app.post('/api/generate', async (req, res) => {
-  const { url, description, autoRun = true, login = null } = req.body;
-  if (!url || !description) {
-    return res.status(400).json({ error: 'url and description required' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  const send = (type, data) => res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
-  const useAuth = !!(login && login.url && login.username);
-
-  try {
-    if (useAuth) await loginAndSave(login, send);
-    const pageData = await crawlPage(url, send, useAuth);
-    send('progress', `📋 Found: ${pageData.forms} form(s), ${pageData.buttons.length} button(s), ${pageData.inputs.length} input(s), ${pageData.links.length} link(s)`);
-    send('progress', `📄 Page title: "${pageData.title}"`);
-    if (pageData.inputs.length > 0) {
-      send('progress', `🔤 Inputs detected: ${pageData.inputs.map(i => i.name || i.type).join(', ')}`);
+for (const operation of ['generate', 'run']) {
+  app.post(`/api/${operation}`, async (req, res) => {
+    const { url, description, code, autoRun = true, login = null } = req.body;
+    if (!url || (operation === 'generate' ? !description : !code))
+      return res.status(400).json({ error: 'Target URL and test description or code are required.' });
+    const job = begin(req, res);
+    if (!job) return;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    const send = (type, data) => {
+      if (!res.destroyed) res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    };
+    send('job', job.id);
+    const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': heartbeat\n\n'); }, 15000);
+    const useAuth = !!(login && login.url && login.username);
+    let terminal;
+    let failure;
+    try {
+      if (useAuth) await loginAndSave(login, send, job);
+      let testCode = code;
+      if (operation === 'generate') {
+        const pageData = await crawlPage(url, send, useAuth, job);
+        job.check();
+        testCode = await generateTests(pageData, url, description, send, useAuth, job);
+        job.check();
+        send('testCode', testCode);
+      }
+      terminal = operation === 'run' || autoRun
+        ? await runTests(testCode, send, useAuth, job) : { kind: 'generated' };
+    } catch (error) {
+      failure = job.cleanupFailed ? error.message : job.signal.reason?.message || error.message;
+    } finally {
+      clearInterval(heartbeat);
+      try { finish(job); } catch (error) { failure = `Cleanup failed: ${error.message}`; }
+      if (failure) send('error', failure);
+      else send('done', terminal);
+      res.end();
     }
-    if (pageData.buttons.length > 0) {
-      send('progress', `🔘 Buttons detected: ${pageData.buttons.join(', ')}`);
-    }
-
-    const testCode = await generateTests(pageData, url, description, send, useAuth);
-    send('testCode', testCode);
-
-    if (autoRun) {
-      await runTests(url, testCode, send, useAuth);
-    } else {
-      send('progress', '✋ Review mode — edit tests, then click Run.');
-      send('awaitReview', 'ready');
-      send('done', 'generated');
-    }
-  } catch (err) {
-    send('error', err.message);
-  } finally {
-    res.end();
-  }
-});
-
-// Run user-supplied (possibly edited) test code without re-generating
-app.post('/api/run', async (req, res) => {
-  const { url, code, login = null } = req.body;
-  if (!url || !code) {
-    return res.status(400).json({ error: 'url and code required' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  const send = (type, data) => res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
-  const useAuth = !!(login && login.url && login.username);
-
-  try {
-    if (useAuth) await loginAndSave(login, send);
-    await runTests(url, code, send, useAuth);
-  } catch (err) {
-    send('error', err.message);
-  } finally {
-    res.end();
-  }
-});
+  });
+}
 
 fetchFreeModels().then(() => {
-  app.listen(3001, () => {
+  app.listen(3001, '127.0.0.1', () => {
     console.log('Test Army server → http://localhost:3001');
     console.log(`LLM backend: ${LLM_BACKEND}${LLM_BACKEND === 'claude' ? ` (model: ${process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'})` : ''}`);
   });

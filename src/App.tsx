@@ -1,18 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import './App.css';
+import { requestEventStream } from '../shared/event-stream.mjs';
+import { statusLabels, testStatuses } from '../shared/run-result.mjs';
+import type { RunResult } from '../shared/run-result.mjs';
+import { apiRequest, SERVER } from './api';
+import { ProtectedScreenshot } from './ProtectedScreenshot';
 
 type Tab = 'log' | 'code' | 'results';
 type Status = 'idle' | 'running' | 'done' | 'error';
 
-interface TestRow {
-  title: string;
-  status: string;
-  durationMs: number;
-  error: string;
-  screenshot: string | null;
-}
-
-const SERVER = 'http://localhost:3001';
 
 interface PageData {
   title: string;
@@ -35,13 +31,17 @@ const PRESETS: { label: string; text: string }[] = [
 ];
 
 export default function App() {
+  const [jobId, setJobId] = useState('');
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState<string[]>([]);
   const [testCode, setTestCode] = useState('');
   const [results, setResults] = useState('');
-  const [report, setReport] = useState<TestRow[]>([]);
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [runError, setRunError] = useState('');
   const [autoRun, setAutoRun] = useState(true);
   const [awaitingReview, setAwaitingReview] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -57,14 +57,26 @@ export default function App() {
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const log = logEndRef.current?.parentElement;
+    if (log && log.scrollHeight - log.scrollTop - log.clientHeight < 120) log.scrollTop = log.scrollHeight;
   }, [progress]);
 
-  const parseResults = (raw: string) => {
-    const passed = (raw.match(/\d+ passed/g) || []).join(' ');
-    const failed = (raw.match(/\d+ failed/g) || []).join(' ');
-    return { passed, failed, hasFailed: raw.includes(' failed') };
-  };
+  async function cancelTask() {
+    setCanceling(true);
+    setCancelError('');
+    try {
+      const response = await apiRequest(`${SERVER}/api/jobs/${jobId}/cancel`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Test-Army': '1' }, body: '{}',
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Unable to request cancellation. Please try again.');
+      }
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : 'Cancellation failed.');
+      setCanceling(false);
+    }
+  }
 
   function addPreset(text: string) {
     if (status === 'running') return;
@@ -77,9 +89,9 @@ export default function App() {
     setInspectError('');
     setPageData(null);
     try {
-      const res = await fetch(`${SERVER}/api/inspect`, {
+      const res = await apiRequest(`${SERVER}/api/inspect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Test-Army': '1' },
         body: JSON.stringify({ url, login: loginPayload() }),
       });
       const data = await res.json();
@@ -92,48 +104,28 @@ export default function App() {
     }
   }
 
-  async function consumeStream(endpoint: string, body: object) {
-    const res = await fetch(`${SERVER}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const event = JSON.parse(line.slice(5).trim());
-        if (event.type === 'progress') setProgress(p => [...p, event.data]);
-        if (event.type === 'testCode') {
-          setTestCode(event.data);
-          setActiveTab('code');
-        }
-        if (event.type === 'awaitReview') setAwaitingReview(true);
-        if (event.type === 'results') {
-          setResults(event.data);
-          setActiveTab('results');
-        }
-        if (event.type === 'report') {
-          setReport(event.data);
-          setActiveTab('results');
-        }
-        if (event.type === 'done') setStatus('done');
-        if (event.type === 'error') {
-          setProgress(p => [...p, `❌ ERROR: ${event.data}`]);
-          setStatus('error');
-        }
+  async function consumeStream(endpoint: string, body: object, completion: 'run' | 'generated') {
+    await requestEventStream(`${SERVER}${endpoint}`, body, event => {
+      if (event.type === 'job') setJobId(event.data);
+      if (event.type === 'progress') setProgress(p => [...p, event.data]);
+      if (event.type === 'testCode') {
+        setTestCode(event.data);
+        setActiveTab('code');
       }
-    }
+      if (event.type === 'results') {
+        setResults(event.data);
+        setActiveTab('results');
+      }
+      if (event.type === 'done') {
+        if (event.data.kind === 'run') {
+          setRunResult(event.data.result);
+          setActiveTab('results');
+        } else {
+          setAwaitingReview(true);
+        }
+        setStatus('done');
+      }
+    }, completion, 300000, apiRequest);
   }
 
   function loginPayload() {
@@ -142,37 +134,54 @@ export default function App() {
       : null;
   }
 
+  function showRequestError(error: unknown) {
+    const message = error instanceof Error ? error.message : 'Request failed. Please retry.';
+    setRunError(message);
+    setProgress(p => [...p, `❌ ERROR: ${message}`]);
+    setAwaitingReview(false);
+    setStatus('error');
+  }
+
   async function run() {
-    if (!url || !description || status === 'running') return;
+    if (!url.trim() || !description.trim() || inspecting || status === 'running') return;
+    setJobId('');
+    setCanceling(false);
+    setCancelError('');
     setStatus('running');
     setProgress([]);
     setTestCode('');
     setResults('');
-    setReport([]);
+    setRunResult(null);
+    setRunError('');
+    setShowRaw(false);
     setOpenRows({});
     setAwaitingReview(false);
     setActiveTab('log');
     try {
-      await consumeStream('/api/generate', { url, description, autoRun, login: loginPayload() });
+      await consumeStream('/api/generate', { url, description, autoRun, login: loginPayload() }, autoRun ? 'run' : 'generated');
     } catch (err: unknown) {
-      if (err instanceof Error) setProgress(p => [...p, `❌ ERROR: ${err.message}`]);
-      setStatus('error');
+      showRequestError(err);
     }
   }
 
   async function runCode() {
-    if (!url || !testCode || status === 'running') return;
+    if (!url || !testCode || inspecting || status === 'running') return;
+    setJobId('');
+    setCanceling(false);
+    setCancelError('');
+    setProgress([]);
     setStatus('running');
     setResults('');
-    setReport([]);
+    setRunResult(null);
+    setRunError('');
+    setShowRaw(false);
     setOpenRows({});
     setAwaitingReview(false);
     setActiveTab('log');
     try {
-      await consumeStream('/api/run', { url, code: testCode, login: loginPayload() });
+      await consumeStream('/api/run', { url, code: testCode, login: loginPayload() }, 'run');
     } catch (err: unknown) {
-      if (err instanceof Error) setProgress(p => [...p, `❌ ERROR: ${err.message}`]);
-      setStatus('error');
+      showRequestError(err);
     }
   }
 
@@ -186,27 +195,31 @@ export default function App() {
     URL.revokeObjectURL(a.href);
   }
 
-  const { passed, failed, hasFailed } = parseResults(results);
+  const report = runResult?.tests ?? [];
+  const allPassed = status === 'done' && runResult?.status === 'passed';
+  const resultTone = allPassed ? 'pass' : runResult && ['skipped', 'noTests', 'canceled'].includes(runResult.status) ? 'neutral' : 'fail';
   const hasOutput = progress.length > 0 || testCode || results;
 
   return (
     <div className="app">
       <header className="header">
         <h1>⚔ Test Army</h1>
-        <p>URL + description → AI generates &amp; runs E2E tests (happy path, negative, edge cases)</p>
+        <p>Your workspace for generating, reviewing, and running browser tests.</p>
       </header>
 
       <div className="workspace">
         {/* LEFT: Input panel */}
         <section className="panel left-panel">
+          <div className="section-heading"><span className="eyebrow">SET UP YOUR TEST</span><h2>What should we check?</h2><p>Choose a page, then describe the outcome you expect.</p></div>
           <div className="field">
-            <label>Target URL</label>
+            <label htmlFor="target-url">Target URL</label>
             <input
+              id="target-url"
               type="url"
               placeholder="https://example.com/login"
               value={url}
               onChange={e => { setUrl(e.target.value); setPageData(null); setInspectError(''); }}
-              disabled={status === 'running'}
+              disabled={status === 'running' || inspecting}
             />
             <button
               className="inspect-btn"
@@ -221,6 +234,7 @@ export default function App() {
             <button
               type="button"
               className="login-head"
+              aria-expanded={showLogin}
               onClick={() => setShowLogin(s => !s)}
             >
               <span>🔐 Requires login? {loginUrl && loginUser ? '(on)' : '(off)'}</span>
@@ -231,24 +245,27 @@ export default function App() {
                 <input
                   type="url"
                   placeholder="Login page URL"
+                  aria-label="Login page URL"
                   value={loginUrl}
                   onChange={e => setLoginUrl(e.target.value)}
-                  disabled={status === 'running'}
+                  disabled={status === 'running' || inspecting}
                 />
                 <input
                   type="text"
                   placeholder="Username / email"
+                  aria-label="Username / email"
                   value={loginUser}
                   onChange={e => setLoginUser(e.target.value)}
-                  disabled={status === 'running'}
+                  disabled={status === 'running' || inspecting}
                   autoComplete="off"
                 />
                 <input
                   type="password"
                   placeholder="Password"
+                  aria-label="Password"
                   value={loginPass}
                   onChange={e => setLoginPass(e.target.value)}
-                  disabled={status === 'running'}
+                  disabled={status === 'running' || inspecting}
                   autoComplete="off"
                 />
                 <span className="login-note">Logs in once, reuses session for crawl + tests. Auto-detects user/password/submit fields.</span>
@@ -256,7 +273,7 @@ export default function App() {
             )}
           </div>
 
-          {inspectError && <div className="status-badge fail">✗ {inspectError}</div>}
+          {inspectError && <div role="alert" className="status-badge fail">✗ {inspectError}</div>}
 
           {pageData && (
             <div className="preview">
@@ -311,12 +328,13 @@ export default function App() {
           )}
 
           <div className="field">
-            <label>What to test</label>
+            <label htmlFor="test-description">What to test</label>
             <textarea
+              id="test-description"
               placeholder="e.g. test login with valid creds, wrong password, empty fields, SQL injection, very long username, special characters"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              disabled={status === 'running'}
+              disabled={status === 'running' || inspecting}
               rows={5}
             />
             <div className="chips">
@@ -326,7 +344,7 @@ export default function App() {
                   type="button"
                   className="chip"
                   onClick={() => addPreset(p.text)}
-                  disabled={status === 'running'}
+                  disabled={status === 'running' || inspecting}
                 >
                   {p.label}
                 </button>
@@ -339,7 +357,7 @@ export default function App() {
               type="checkbox"
               checked={!autoRun}
               onChange={e => setAutoRun(!e.target.checked)}
-              disabled={status === 'running'}
+              disabled={status === 'running' || inspecting}
             />
             Review tests before running
           </label>
@@ -347,29 +365,38 @@ export default function App() {
           <button
             className={`run-btn ${status === 'running' ? 'running' : ''}`}
             onClick={run}
-            disabled={status === 'running' || !url || !description}
+            disabled={status === 'running' || inspecting || !url.trim() || !description.trim()}
           >
             {status === 'running'
               ? '⏳ Working...'
               : autoRun ? '⚔ Deploy Test Army' : '✍ Generate Tests'}
           </button>
 
+          {status === 'running' && (
+            <div className="task-progress">
+              <p role="status">{canceling ? 'Canceling — waiting for cleanup…' : 'Task in progress'}</p>
+              <p className="progress-detail">{progress.at(-1) || 'Connecting to the server…'}</p>
+              {jobId && <button className="cancel-btn" onClick={cancelTask} disabled={canceling}>{canceling ? 'Canceling…' : 'Cancel task'}</button>}
+              {cancelError && <p role="alert">{cancelError}</p>}
+            </div>
+          )}
+
           {awaitingReview && status !== 'running' && (
             <div className="review-actions">
               <div className="review-note">✋ Review/edit in <b>Generated Tests</b> tab, then run.</div>
-              <button className="run-btn" onClick={runCode} disabled={!testCode}>
+              <button className="run-btn" onClick={runCode} disabled={!testCode || inspecting}>
                 ▶ Run Tests
               </button>
             </div>
           )}
 
-          {status === 'done' && results && (
-            <div className={`status-badge ${hasFailed ? 'fail' : 'pass'}`}>
-              {hasFailed ? `✗ Some tests failed — ${failed}` : `✓ All tests passed — ${passed}`}
+          {status === 'done' && runResult && (
+            <div role="status" className={`status-badge ${resultTone}`}>
+              {statusLabels[runResult.status]} — {runResult.counts.total} tests
             </div>
           )}
           {status === 'error' && (
-            <div className="status-badge fail">✗ Error — check live log</div>
+            <div role="alert" className="status-badge fail">✗ {runError}</div>
           )}
         </section>
 
@@ -393,12 +420,12 @@ export default function App() {
             <button
               className={activeTab === 'results' ? 'active' : ''}
               onClick={() => setActiveTab('results')}
-              disabled={!results}
+              disabled={!results && !runResult}
             >
               Results
-              {results && (
-                <span className={`badge ${hasFailed ? 'fail' : 'pass'}`}>
-                  {hasFailed ? `✗` : `✓`}
+              {runResult && (
+                <span className={`badge ${resultTone}`}>
+                  {allPassed ? '✓' : '!'}
                 </span>
               )}
             </button>
@@ -408,7 +435,7 @@ export default function App() {
             {activeTab === 'log' && (
               <div className="log">
                 {!hasOutput && status === 'idle' && (
-                  <div className="empty-state">Waiting for input...</div>
+                  <div className="empty-state"><span className="eyebrow">READY WHEN YOU ARE</span><h2>Start with one workflow</h2><p>Enter your target URL and what should happen. Use a preset for ideas, or preview the page first.</p><div className="empty-steps"><span>1 · Describe</span><span>2 · Generate</span><span>3 · Review results</span></div></div>
                 )}
                 {progress.map((line, i) => (
                   <div key={i} className={`log-line ${line.startsWith('❌') ? 'err' : ''}`}>
@@ -437,7 +464,7 @@ export default function App() {
                         <button
                           className="code-btn"
                           onClick={runCode}
-                          disabled={status === 'running'}
+                          disabled={status === 'running' || inspecting}
                         >
                           ▶ {awaitingReview ? 'Run' : 'Re-run'}
                         </button>
@@ -446,10 +473,11 @@ export default function App() {
                     </div>
                     <textarea
                       className="code-editor"
+                      aria-label="Generated test code"
                       value={testCode}
                       onChange={e => setTestCode(e.target.value)}
                       spellCheck={false}
-                      disabled={status === 'running'}
+                      disabled={status === 'running' || inspecting}
                     />
                   </>
                 ) : (
@@ -460,13 +488,19 @@ export default function App() {
 
             {activeTab === 'results' && (
               <div className="results-view">
+                {runResult && (
+                  <div className="run-details">
+                    <p>Run: {runResult.runId}</p>
+                    <p>Exit code: {runResult.exitCode ?? 'unavailable'}{runResult.signal ? ` · Signal: ${runResult.signal}` : ''}</p>
+                    {runResult.errors.map((error, i) => <pre className="test-error" key={i}>{error}</pre>)}
+                  </div>
+                )}
                 {report.length > 0 && (
                   <div className="results-toolbar">
                     <span className="results-summary">
-                      <span className="ok">{report.filter(r => r.status === 'passed').length} passed</span>
-                      {report.some(r => r.status !== 'passed') && (
-                        <span className="bad">{report.filter(r => r.status !== 'passed').length} failed</span>
-                      )}
+                      {testStatuses.map(testStatus => (
+                        <span key={testStatus}>{runResult?.counts[testStatus] ?? 0} {testStatus === 'timedOut' ? 'timed out' : testStatus}</span>
+                      ))}
                     </span>
                     <button className="raw-toggle" onClick={() => setShowRaw(s => !s)}>
                       {showRaw ? 'Show summary' : 'Show raw output'}
@@ -478,16 +512,19 @@ export default function App() {
                   <div className="test-rows">
                     {report.map((r, i) => {
                       const pass = r.status === 'passed';
+                      const tone = pass ? 'pass' : ['skipped', 'interrupted'].includes(r.status) ? 'neutral' : 'fail';
                       const open = !!openRows[i];
                       return (
-                        <div key={i} className={`test-row ${pass ? 'pass' : 'fail'}`}>
+                        <div key={i} className={`test-row ${tone}`}>
                           <button
                             className="test-row-head"
+                            aria-expanded={!pass ? open : undefined}
                             onClick={() => setOpenRows(o => ({ ...o, [i]: !o[i] }))}
                             disabled={pass}
                           >
                             <span className="test-icon">{pass ? '✓' : '✗'}</span>
                             <span className="test-title">{r.title}</span>
+                            <span>{r.status === 'timedOut' ? 'timed out' : r.status}</span>
                             <span className="test-dur">{Math.round(r.durationMs)}ms</span>
                             {!pass && <span className="test-caret">{open ? '▾' : '▸'}</span>}
                           </button>
@@ -495,9 +532,7 @@ export default function App() {
                             <div className="test-detail">
                               {r.error && <pre className="test-error">{r.error}</pre>}
                               {r.screenshot && (
-                                <a href={`${SERVER}${r.screenshot}`} target="_blank" rel="noreferrer">
-                                  <img className="test-shot" src={`${SERVER}${r.screenshot}`} alt="failure screenshot" />
-                                </a>
+                                <ProtectedScreenshot path={r.screenshot} />
                               )}
                             </div>
                           )}
@@ -508,7 +543,7 @@ export default function App() {
                 )}
 
                 {(showRaw || report.length === 0) && (
-                  <pre className={`code-block results ${hasFailed ? 'has-fail' : 'all-pass'}`}>
+                  <pre className={`code-block results ${allPassed ? 'all-pass' : 'has-fail'}`}>
                     {results || 'No results yet.'}
                   </pre>
                 )}

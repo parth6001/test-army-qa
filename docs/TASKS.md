@@ -3,10 +3,12 @@
 Updated: 2026-10-10. Owner for implementation/review: assistant during active work;
 user supplies product expectations and real-target access when needed.
 
-Current: **TA-004a and TA-004b DONE; TA-004 remains IN PROGRESS**. Next card:
+Current: **TA-004a and TA-004b DONE; TA-004 remains IN PROGRESS**. Next task:
 TA-004c worker isolation, destination restrictions and provider-data minimization.
 TA-001 runtime checks now pass (see 2026-10-10 TA-004a handoff). The user explicitly requested the
 next tasks, authorizing TA-002/003 implementation before that verification completes.
+User-directed current item: **TA-016**, GitHub Pages project site with screenshot
+and project details, in progress ahead of TA-004c.
 
 ## Working rules
 
@@ -43,6 +45,7 @@ starts. Provider access and the blocked browser environment can change estimates
 | TA-013 | Accessibility, visual, and browser/device coverage | P2 | BACKLOG | After TA-008/010/011 | 3-5 days |
 | TA-014 | Reviewed repair suggestions with regression protection | P2 | BACKLOG | After TA-010/011 | 3-5 days |
 | TA-015 | Target-product CI execution, schedules, release summaries | P2 | BACKLOG | After TA-004/007/008/011; confirm target runner access | 2-4 days |
+| TA-016 | GitHub Pages project site, app screenshot and project details | P2 | REVIEW | Local page/checks pass; verify deployment after push | 0.5-1 day |
 
 TA-007 should be pulled forward immediately after TA-002 if GitHub runner access
 is available. All other rows follow the stated prerequisite order. Later rows
@@ -204,6 +207,25 @@ feature in a single session.
   Evidence: [TA-004a verification](verification/TA-004a.md).
 - Next: TA-004c restricted worker design/implementation with Windows
   prerequisites recorded; shared deployment stays outside this milestone.
+
+### TA-016 — GitHub Pages project site
+
+- State: REVIEW. User clarified this means a public GitHub Pages website,
+  not an About screen inside the product, 2026-10-10.
+- Scope: static project page deployed from `docs/`, real clean-workspace screenshot,
+  project workflow, accurate provider/data and security limits, technology details,
+  README link, and GitHub Actions Pages deployment.
+- Acceptance: (1) responsive static site opens with relative assets; (2) screenshot
+  is an actual local app capture without user data; (3) product/provider/data
+  descriptions are accurate; (4) deployment workflow has least required permissions
+  and triggers on project-site changes; (5) HTML/link review and build are clean.
+- E2E applicability: static documentation site; review rendered page at desktop
+  and narrow viewport and check asset links. No app/backend/provider calls apply.
+- Completed: responsive static site in `docs/` with app screenshot, workflow,
+  technology, provider data flow, security limits and roadmap. Added Pages
+  workflow, local static server/browser check, screenshot capture and README link.
+- Validation: site browser review passes desktop/mobile; app build/lint pass.
+- Remaining: push site/workflow and confirm Pages deployment and public URL.
 
 ### TA-005 — Authentication that proves success
 

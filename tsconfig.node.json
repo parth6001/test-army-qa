@@ -23,6 +23,7 @@
   "include": [
     "vite.config.ts",
     "playwright.config.ts",
+    "playwright.pages.config.ts",
     "playwright.external.config.ts",
     "tests/app/**/*.ts"
   ]

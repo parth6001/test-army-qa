@@ -3,6 +3,17 @@
 Local QA assistant: inspect a target page, describe scenarios, generate editable
 Playwright tests, run them, and review results and screenshots.
 
+## Project site
+
+Visit the [Test Army project site](https://parth6001.github.io/test-army-qa/) for
+the app screenshot, workflow, technology, data flow, and current limitations.
+
+![Test Army workspace showing target setup and live log](docs/assets/test-army-workspace.png)
+
+The static project site deploys from `docs/` with GitHub Actions whenever `main`
+changes. Enable GitHub Pages with **GitHub Actions** as the source in repository
+settings. Regenerate the clean UI screenshot with `npm run capture:preview`.
+
 Start the UI with `npm run dev` and the backend in a second terminal with
 `npm run server`, then open `http://localhost:5173`. The existing
 `npm run dev:all` script starts both processes together. Browser binaries and the
@@ -16,10 +27,10 @@ Project planning and progress:
 - [QA and E2E review strategy](docs/QA_STRATEGY.md)
 - [Project memory](docs/PROJECT_MEMORY.md)
 
-As of 2026-10-10, TA-001/002 changes are implemented and await browser verification.
-TypeScript, lint and 37 contract checks pass; full build/component-unit/browser
-execution is blocked in the current environment. See the tracker for evidence.
-The roadmap describes planned capabilities, not completed features.
+As of 2026-10-10, TA-001 and TA-004a/b are complete. TA-002/003 remain in review
+for real runner and process-cleanup evidence; TA-004c is the next security task.
+See the tracker and verification notes for current results. The roadmap describes
+planned capabilities, not completed features.
 
 ## Local setup
 

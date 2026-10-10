@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b1018">
+    <meta name="description" content="Test Army is a local workspace for generating, reviewing and running browser checks with Playwright.">
+    <title>Test Army — browser QA workspace</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Test Army home"><span class="brand-mark" aria-hidden="true">⚔</span> Test Army</a>
+      <nav aria-label="Main navigation">
+        <a href="#workflow">Workflow</a>
+        <a href="#data">Data &amp; privacy</a>
+        <a href="#roadmap">Roadmap</a>
+        <a class="nav-cta" href="https://github.com/parth6001/test-army-qa">View on GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero wrap">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> LOCAL BROWSER QA</p>
+          <h1>Browser checks you can <em>see and review.</em></h1>
+          <p class="hero-lede">Test Army turns a page and a plain-language goal into editable Playwright checks, then gives you a clear place to run them and inspect the results.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/parth6001/test-army-qa">Explore the project <span aria-hidden="true">↗</span></a>
+            <a class="button secondary" href="#workflow">See how it works <span aria-hidden="true">↓</span></a>
+          </div>
+          <p class="hero-note">Runs locally on your machine. AI generation uses the provider you configure.</p>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <div class="crosshair">+</div><div class="hero-card card-a"><span>01 / INSPECT</span><b>Page structure</b><i>captured</i></div>
+          <div class="hero-card card-b"><span>02 / REVIEW</span><b>Test code</b><i>editable</i></div>
+          <div class="hero-card card-c"><span>03 / RUN</span><b>Test results</b><i class="green">ready to inspect</i></div>
+          <div class="hero-spark spark-a">✳</div><div class="hero-spark spark-b">✳</div>
+        </div>
+        <div class="hero-meta"><span>01 — PRODUCT OVERVIEW</span><span>PLAYWRIGHT · REACT · NODE.JS</span></div>
+      </section>
+
+      <section class="preview-section wrap" aria-labelledby="preview-title">
+        <div class="section-intro">
+          <p class="eyebrow">THE WORKSPACE</p>
+          <h2 id="preview-title">One place for the whole check.</h2>
+          <p>Describe the behavior, inspect the target, review generated code, and follow each result.</p>
+        </div>
+        <figure class="product-shot">
+          <div class="shot-bar"><span class="window-dots"><i></i><i></i><i></i></span><span>TEST ARMY / WORKSPACE</span><span class="shot-live"><i></i> LOCAL PREVIEW</span></div>
+          <img src="assets/test-army-workspace.png" alt="Screenshot of the Test Army workspace showing target setup, test description and live log">
+          <figcaption>Current application workspace. This clean screenshot contains no target page or user data.</figcaption>
+        </figure>
+      </section>
+
+      <section class="workflow-section" id="workflow">
+        <div class="wrap">
+          <div class="section-intro split-intro">
+            <div><p class="eyebrow">A REVIEWABLE FLOW</p><h2>From first look to useful evidence.</h2></div>
+            <p>AI can draft the steps. You stay in control of the code and the decision to run it.</p>
+          </div>
+          <div class="steps">
+            <article class="step"><div class="step-top"><span>01</span><span class="step-symbol">⌕</span></div><h3>Inspect</h3><p>Preview a target page. Test Army collects visible structure, controls, and a small sample of rows to guide the scenarios.</p><span class="step-foot">PAGE CONTEXT</span></article>
+            <article class="step"><div class="step-top"><span>02</span><span class="step-symbol">⌘</span></div><h3>Generate &amp; review</h3><p>Ask a configured AI provider for Playwright code. Edit the draft in the app, or choose review mode to approve it before a run.</p><span class="step-foot">YOUR REVIEW</span></article>
+            <article class="step"><div class="step-top"><span>03</span><span class="step-symbol">↗</span></div><h3>Run &amp; learn</h3><p>Run browser checks and inspect each status, error, and available failure screenshot. Rerun edited code when ready.</p><span class="step-foot">RUN EVIDENCE</span></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="data-section wrap" id="data">
+        <div class="data-heading"><p class="eyebrow">CLEAR DATA BOUNDARIES</p><h2>Know what stays local and what gets shared.</h2><p>Test Army is a local application. AI generation sends a limited page context to the provider you select.</p></div>
+        <div class="data-grid">
+          <article class="data-card local-card"><div class="data-icon">⌂</div><h3>On your machine</h3><ul><li>The UI backend and browser runner</li><li>Login credentials used by the local browser flow</li><li>Short-lived session tokens and per-run files</li></ul><p>Sessions expire after eight hours and are cleared when the backend restarts.</p></article>
+          <article class="data-card provider-card"><div class="data-icon">↗</div><h3>Sent for generation</h3><ul><li>Target URL and your test description</li><li>Inspected title, headings, controls and sample rows</li><li>Instructions for the requested Playwright checks</li></ul><p>Login credentials are not included in the generation prompt. Provider terms still apply to the page context you send.</p></article>
+        </div>
+        <p class="data-footnote">Review generated code before running it. Generated tests currently execute with host access; worker isolation is planned security work.</p>
+      </section>
+
+      <section class="stack-section">
+        <div class="wrap stack-layout">
+          <div><p class="eyebrow">UNDER THE HOOD</p><h2>Small, familiar building blocks.</h2><p>The current project keeps its local UI, service, and browser runner in one repository.</p></div>
+          <ul class="stack-list"><li><span>01</span><b>React + TypeScript</b><small>Workspace UI</small></li><li><span>02</span><b>Node.js + Express</b><small>Local API and job control</small></li><li><span>03</span><b>Playwright</b><small>Page inspection and browser execution</small></li><li><span>04</span><b>OpenRouter or Claude</b><small>Optional configured generation provider</small></li></ul>
+        </div>
+      </section>
+
+      <section class="roadmap-section wrap" id="roadmap">
+        <div class="section-intro"><p class="eyebrow">IN PROGRESS</p><h2>Built step by step.</h2><p>The roadmap tracks what is implemented, under review, and still planned. E2E checks reduce risk; they cannot prove the absence of defects.</p></div>
+        <div class="status-list"><div><span class="status-dot done"></span><b>Local UI baseline</b><span>Build and own-app checks complete</span><small>DONE</small></div><div><span class="status-dot review"></span><b>Results &amp; run lifecycle</b><span>Real runner and process review remains</span><small>REVIEW</small></div><div><span class="status-dot active"></span><b>Execution security</b><span>API sessions done; worker isolation is next</span><small>IN PROGRESS</small></div></div>
+        <a class="text-link" href="TASKS.md">Read the task tracker <span aria-hidden="true">↗</span></a>
+      </section>
+
+      <section class="closing wrap"><div><p class="eyebrow">READY TO TAKE A LOOK?</p><h2>Start with the code and the current evidence.</h2></div><a class="button primary" href="https://github.com/parth6001/test-army-qa">Open the GitHub repository <span aria-hidden="true">↗</span></a></section>
+    </main>
+
+    <footer class="site-footer wrap"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">⚔</span> Test Army</a><span>Local browser QA, with reviewable steps.</span><a href="https://github.com/parth6001/test-army-qa">GitHub ↗</a></footer>
+  </body>
+</html>

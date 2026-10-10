@@ -14,8 +14,10 @@
     "test:unit:watch": "vitest",
     "test:contracts": "node tests/contracts/qa-contracts.test.mjs",
     "test:e2e": "playwright test",
+    "test:site": "playwright test --config=playwright.pages.config.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test:contracts && vitest run && playwright test",
+    "capture:preview": "node tools/CapturePreview.mjs",
     "generate": "node generate-tests.mjs"
   },
   "dependencies": {

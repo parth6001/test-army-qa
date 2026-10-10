@@ -1,6 +1,6 @@
 # Project memory
 
-Last updated: 2026-10-10, TA-004b implementation/verification handoff.
+Last updated: 2026-10-10, TA-016 Pages site verification handoff.
 Read with `TASKS.md` before resuming. This file persists facts and decisions in
 the repository; it is not an automatic monitoring service.
 
@@ -96,6 +96,22 @@ The previous blocked results below are retained as historical evidence.
   and run-history UI is a future TA-008 feature.
 
 ## Latest handoff
+
+### TA-016 — GitHub Pages project site (review)
+
+- User clarified they wanted a GitHub Pages project-details site with an app
+  screenshot, not an About screen inside the product. In-app About changes were
+  removed; app source is unchanged for this card.
+- Static site in `docs/index.html` and `docs/styles.css`, with workspace screenshot
+  in `docs/assets/test-army-workspace.png`. Describes workflow, stack, provider
+  data flow, local sessions, host-access limit and current roadmap. README links
+  to the anticipated Pages URL.
+- `.github/workflows/pages.yml` deploys `docs/` on main changes with scoped
+  permissions. `npm run capture:preview` regenerates the clean screenshot;
+  `npm run test:site` reviews the static site at desktop and mobile.
+- Validation: site E2E PASS after fixing a 10-pixel mobile overflow. App build/
+  lint PASS; screenshot visually reviewed. No backend/provider/target contacted.
+- Status REVIEW until push and public deployment are verified. No in-app changes.
 
 ### TA-004b — session authorization, 2026-10-10
 

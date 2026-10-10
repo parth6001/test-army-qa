@@ -8,7 +8,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist', 'test-results', 'playwright-report', '.test-army', 'tests/generated_*']),
   {
-    files: ['*.mjs', 'server/**/*.mjs', 'shared/**/*.mjs', 'tests/contracts/**/*.mjs', 'eslint.config.js'],
+    files: ['*.mjs', 'server/**/*.mjs', 'shared/**/*.mjs', 'tools/**/*.mjs', 'tests/contracts/**/*.mjs', 'eslint.config.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       // Browser globals are used inside Playwright's page.evaluate callbacks.
